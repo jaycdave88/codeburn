@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { copyFile, mkdir, mkdtemp, rm, stat, utimes, writeFile } from 'fs/promises'
+import { copyFile, mkdir, mkdtemp, readFile, rm, utimes, writeFile } from 'fs/promises'
 import { existsSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
 import { createAuggieProvider } from '../../src/providers/auggie.js'
+import type { BillingConfig } from '../../src/billing.js'
 import type { ParsedProviderCall } from '../../src/providers/types.js'
 
 const FIXTURE_DIR = new URL('../fixtures/auggie/', import.meta.url).pathname
@@ -32,6 +33,24 @@ async function stageFixture(name: string): Promise<string> {
   return dest
 }
 
+async function waitForCacheFile(path: string): Promise<void> {
+  for (let i = 0; i < 20; i++) {
+    if (existsSync(path)) return
+    await new Promise(r => setTimeout(r, 10))
+  }
+  expect(existsSync(path)).toBe(true)
+}
+
+async function waitForCacheBillingConfig(path: string, expected: BillingConfig): Promise<void> {
+  for (let i = 0; i < 20; i++) {
+    const cache = JSON.parse(await readFile(path, 'utf-8'))
+    if (cache.billingConfig?.mode === expected.mode && cache.billingConfig?.surchargeRate === expected.surchargeRate) return
+    await new Promise(r => setTimeout(r, 10))
+  }
+  const cache = JSON.parse(await readFile(path, 'utf-8'))
+  expect(cache.billingConfig).toEqual(expected)
+}
+
 beforeEach(async () => {
   workDir = await mkdtemp(join(tmpdir(), 'codeburn-auggie-test-'))
   sessionsDir = join(workDir, 'sessions')
@@ -42,6 +61,8 @@ beforeEach(async () => {
 
 afterEach(async () => {
   delete process.env['CODEBURN_CACHE_DIR']
+  delete process.env['CODEBURN_BILLING_MODE']
+  delete process.env['CODEBURN_SURCHARGE_RATE']
   for (const k of Object.keys(process.env)) {
     if (k.startsWith('CODEBURN_AUGGIE_')) delete process.env[k]
   }
@@ -83,6 +104,8 @@ describe('auggie provider - parsing', () => {
     expect(calls).toHaveLength(1)
     const [call] = calls
     expect(call.provider).toBe('auggie')
+    expect(call.project).toBe('demo-project/repo')
+    expect(call.workspaceId).toBe('ws-aaaaaaaa')
     expect(call.model).toBe('claude-sonnet-4-5')
     expect(call.inputTokens).toBe(5)
     expect(call.outputTokens).toBe(120)
@@ -128,11 +151,49 @@ describe('auggie provider - parsing', () => {
     for (const call of calls) expect(call.model).toBe('claude-haiku-4-5')
   })
 
-  it('aliases the Augment-internal "butler" model id to claude-haiku-4-5 for pricing', async () => {
+  it('keeps an unverified non-empty Augment model id raw and unpriced', async () => {
+    const path = await stageFixture('old-schema.json')
+    const calls = await collectCalls(path)
+    expect(calls).toHaveLength(1)
+    expect(calls[0].model).toBe('butler')
+    expect(calls[0].pricingStatus).toBe('unpriced')
+    expect(calls[0].warnings?.[0]).toContain('butler')
+    expect(calls[0].costUSD).toBe(0)
+    expect(calls[0].billing?.baseCostUsd).toBeNull()
+  })
+
+  it('still respects explicit CODEBURN_AUGGIE_ALIAS overrides', async () => {
+    process.env['CODEBURN_AUGGIE_ALIAS_BUTLER'] = 'claude-haiku-4-5'
     const path = await stageFixture('old-schema.json')
     const calls = await collectCalls(path)
     expect(calls).toHaveLength(1)
     expect(calls[0].model).toBe('claude-haiku-4-5')
+    expect(calls[0].pricingStatus).toBe('estimated')
+    expect(calls[0].warnings).toEqual([])
+    expect(calls[0].costUSD).toBeGreaterThan(0)
+  })
+
+  it('does not fuzzy-price deferred internal GPT ids as public GPT models', async () => {
+    const raw = await readFile(join(FIXTURE_DIR, 'old-schema.json'), 'utf-8')
+    const path = join(sessionsDir, 'gpt-5-5.json')
+    await writeFile(path, raw.replace('"butler"', '"gpt-5-5"'), 'utf-8')
+
+    const calls = await collectCalls(path)
+    expect(calls).toHaveLength(1)
+    expect(calls[0].model).toBe('gpt-5-5')
+    expect(calls[0].pricingStatus).toBe('unpriced')
+    expect(calls[0].costUSD).toBe(0)
+  })
+
+  it('prices public GPT-5.5 ids when they are emitted directly', async () => {
+    const raw = await readFile(join(FIXTURE_DIR, 'old-schema.json'), 'utf-8')
+    const path = join(sessionsDir, 'gpt-5-5-public.json')
+    await writeFile(path, raw.replace('"butler"', '"gpt-5.5"'), 'utf-8')
+
+    const calls = await collectCalls(path)
+    expect(calls).toHaveLength(1)
+    expect(calls[0].model).toBe('gpt-5.5')
+    expect(calls[0].pricingStatus).toBe('estimated')
     expect(calls[0].costUSD).toBeGreaterThan(0)
   })
 
@@ -182,6 +243,66 @@ describe('auggie provider - cache', () => {
       'auggie:11111111-1111-4111-8111-111111111111:req-aaaa0001:0',
     )
   })
+
+  it('does not reuse cached credits billing when switching to token_plus mode', async () => {
+    const path = await stageFixture('single-call.json')
+    const cacheFile = join(cacheDir, 'auggie', 'single-call.json')
+
+    const creditsCalls = await collectCalls(path)
+    expect(creditsCalls[0].billing?.mode).toBe('credits')
+    await waitForCacheFile(cacheFile)
+
+    process.env['CODEBURN_BILLING_MODE'] = 'token_plus'
+    process.env['CODEBURN_SURCHARGE_RATE'] = '0.25'
+    const tokenPlusCalls = await collectCalls(path)
+
+    expect(tokenPlusCalls[0].billing?.mode).toBe('token_plus')
+    expect(tokenPlusCalls[0].billing?.creditsAugment).toBeNull()
+    expect(tokenPlusCalls[0].billing?.surchargeUsd).toBeGreaterThan(0)
+    expect(tokenPlusCalls[0].billing?.billedAmountUsd).toBeGreaterThan(0)
+  })
+
+  it('does not reuse cached token_plus billing when surcharge settings change', async () => {
+    const path = await stageFixture('single-call.json')
+    const cacheFile = join(cacheDir, 'auggie', 'single-call.json')
+
+    process.env['CODEBURN_BILLING_MODE'] = 'token_plus'
+    process.env['CODEBURN_SURCHARGE_RATE'] = '0.10'
+    const first = await collectCalls(path)
+    await waitForCacheFile(cacheFile)
+
+    process.env['CODEBURN_SURCHARGE_RATE'] = '0.25'
+    const second = await collectCalls(path)
+
+    expect(first[0].billing?.surchargeUsd).toBeGreaterThan(0)
+    expect(second[0].billing?.surchargeUsd).toBeGreaterThan(first[0].billing!.surchargeUsd!)
+    expect(second[0].billing?.billedAmountUsd).toBeGreaterThan(first[0].billing!.billedAmountUsd!)
+
+    await waitForCacheBillingConfig(cacheFile, { mode: 'token_plus', surchargeRate: 0.25 })
+  })
+
+  it('does not reuse cached unpriced raw model calls after an explicit alias is configured', async () => {
+    const path = await stageFixture('old-schema.json')
+    const cacheFile = join(cacheDir, 'auggie', 'old-schema.json')
+
+    const rawCalls = await collectCalls(path)
+    expect(rawCalls).toHaveLength(1)
+    expect(rawCalls[0].model).toBe('butler')
+    expect(rawCalls[0].pricingStatus).toBe('unpriced')
+    expect(rawCalls[0].warnings?.[0]).toContain('butler')
+    expect(rawCalls[0].costUSD).toBe(0)
+    await waitForCacheFile(cacheFile)
+
+    process.env['CODEBURN_AUGGIE_ALIAS_BUTLER'] = 'claude-haiku-4-5'
+    const aliasCalls = await collectCalls(path)
+
+    expect(aliasCalls).toHaveLength(1)
+    expect(aliasCalls[0].model).toBe('claude-haiku-4-5')
+    expect(aliasCalls[0].pricingStatus).toBe('estimated')
+    expect(aliasCalls[0].warnings).toEqual([])
+    expect(aliasCalls[0].costUSD).toBeGreaterThan(0)
+    expect(aliasCalls[0].billing?.baseCostUsd).toBeGreaterThan(0)
+  })
 })
 
 describe('auggie provider - modern schema', () => {
@@ -225,6 +346,15 @@ describe('auggie provider - modern schema', () => {
     const calls = await collectCalls(path)
     // sessionCreditUsage should be on first call for session-level total
     expect(calls[0].sessionCreditUsage).toBe(42.5)
+  })
+
+  it('keeps nonzero subAgentCreditsUsed informational and separate from creditUsage', async () => {
+    const path = await stageFixture('sub-agent-credits-nonzero.json')
+    const calls = await collectCalls(path)
+    expect(calls).toHaveLength(1)
+    expect(calls[0].credits).toBe(40)
+    expect(calls[0].sessionCreditUsage).toBe(40)
+    expect(calls[0].sessionSubAgentCreditsUsedUnconfirmed).toBe(6.5)
   })
 })
 

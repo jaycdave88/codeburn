@@ -3,6 +3,7 @@ import { chmod, mkdir, open, readFile, rename, stat, unlink } from 'fs/promises'
 import { basename, join } from 'path'
 import { homedir } from 'os'
 
+import type { BillingConfig } from './billing.js'
 import type { ParsedProviderCall } from './providers/types.js'
 
 /// Per-session cache for parsed Auggie calls. Each session file in ~/.augment/sessions/*.json
@@ -19,13 +20,20 @@ type SessionCacheFile = {
   sourcePath: string
   mtimeMs: number
   sizeBytes: number
+  billingConfig: BillingConfig
+  modelResolutionEnv: Record<string, string>
   calls: ParsedProviderCall[]
 }
 
 // CACHE_VERSION changelog:
 // v1: Initial schema
 // v2: Added `billing: BillingResult` field to ParsedProviderCall (Wave 2 billing integration)
-const CACHE_VERSION = 2
+// v3: Added billing config metadata so mode/surcharge switches invalidate cached totals
+// v4: Added Auggie project/workspace attribution fields to cached calls
+// v5: Added informational subAgentCreditsUsed metadata to cached calls
+// v6: Added pricingStatus/warnings and unpriced unknown-model semantics
+// v7: Added Auggie alias/default env metadata so model resolution changes invalidate cached calls
+const CACHE_VERSION = 7
 const CACHE_SUBDIR = 'auggie'
 const CACHE_FILE_MODE = 0o600
 const CACHE_DIR_MODE = 0o700
@@ -39,6 +47,34 @@ function cachePathFor(sourcePath: string): string {
   // The session filename is already a UUID, so basename is unique. Don't hash -- keeps the
   // cache layout inspectable with `ls` and makes invalidation on session deletion trivial.
   return join(getCacheDir(), basename(sourcePath))
+}
+
+function billingConfigMatches(a: BillingConfig, b: BillingConfig): boolean {
+  return a.mode === b.mode && a.surchargeRate === b.surchargeRate
+}
+
+function currentModelResolutionEnv(): Record<string, string> {
+  const env: Record<string, string> = Object.create(null)
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value === undefined) continue
+    if (key.startsWith('CODEBURN_AUGGIE_ALIAS_') || key.startsWith('CODEBURN_AUGGIE_DEFAULT_')) {
+      env[key] = value
+    }
+  }
+  return env
+}
+
+function modelResolutionEnvMatches(a: Record<string, string> | undefined, b: Record<string, string>): boolean {
+  if (!a) return false
+  const aKeys = Object.keys(a).sort()
+  const bKeys = Object.keys(b).sort()
+  if (aKeys.length !== bKeys.length) return false
+  for (let i = 0; i < aKeys.length; i++) {
+    const key = aKeys[i]!
+    if (key !== bKeys[i]) return false
+    if (a[key] !== b[key]) return false
+  }
+  return true
 }
 
 async function ensureCacheDir(): Promise<void> {
@@ -58,10 +94,11 @@ async function getFingerprint(sourcePath: string): Promise<{ mtimeMs: number; si
   }
 }
 
-export async function readCachedCalls(sourcePath: string): Promise<ParsedProviderCall[] | null> {
+export async function readCachedCalls(sourcePath: string, billingConfig: BillingConfig): Promise<ParsedProviderCall[] | null> {
   try {
     const fp = await getFingerprint(sourcePath)
     if (!fp) return null
+    const modelResolutionEnv = currentModelResolutionEnv()
 
     const raw = await readFile(cachePathFor(sourcePath), 'utf-8')
     const cache = JSON.parse(raw) as SessionCacheFile
@@ -69,13 +106,15 @@ export async function readCachedCalls(sourcePath: string): Promise<ParsedProvide
     if (cache.sourcePath !== sourcePath) return null
     if (cache.mtimeMs !== fp.mtimeMs) return null
     if (cache.sizeBytes !== fp.sizeBytes) return null
+    if (!billingConfigMatches(cache.billingConfig, billingConfig)) return null
+    if (!modelResolutionEnvMatches(cache.modelResolutionEnv, modelResolutionEnv)) return null
     return cache.calls
   } catch {
     return null
   }
 }
 
-export async function writeCachedCalls(sourcePath: string, calls: ParsedProviderCall[]): Promise<void> {
+export async function writeCachedCalls(sourcePath: string, calls: ParsedProviderCall[], billingConfig: BillingConfig): Promise<void> {
   try {
     const fp = await getFingerprint(sourcePath)
     if (!fp) return
@@ -86,6 +125,8 @@ export async function writeCachedCalls(sourcePath: string, calls: ParsedProvider
       sourcePath,
       mtimeMs: fp.mtimeMs,
       sizeBytes: fp.sizeBytes,
+      billingConfig,
+      modelResolutionEnv: currentModelResolutionEnv(),
       calls,
     }
 

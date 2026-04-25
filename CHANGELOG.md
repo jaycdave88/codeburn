@@ -1,5 +1,7 @@
 # Changelog
 
+> Current Auggie billing semantics are documented in [README.md](./README.md). Older release notes below are historical and may predate `creditUsage` precedence, unknown-model, and sub-agent-credit readiness decisions.
+
 ## [2.0.1] - 2026-04-20
 
 ### Removed (breaking)
@@ -12,6 +14,11 @@
 ### Added
 
 - **GPT-5.2 model pricing** in `src/models.ts` with tests. ~390 credits per standard task (133% of Claude Sonnet 4.6's 293-credit baseline).
+- **Machine-readable JSON schemas finalized for customer readiness.** `report`, `today`, `month`, `status`, and `export --format json` now emit top-level `schema` and `schemaVersion` fields (`codeburn.report.v2`, `codeburn.status.v2`, `codeburn.export.v2`; `schemaVersion: 2`).
+
+### Changed
+
+- **Readiness verification tightened.** CI now runs the Vitest suite, build, TypeScript no-emit check, and `./run.sh --check`; readiness docs also include `git diff --check`.
 
 ### Docs
 
