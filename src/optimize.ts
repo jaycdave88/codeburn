@@ -1,6 +1,6 @@
 import chalk from 'chalk'
 import { readdir, stat } from 'fs/promises'
-import { existsSync, statSync } from 'fs'
+import { existsSync } from 'fs'
 import { basename, join } from 'path'
 import { homedir } from 'os'
 
@@ -9,17 +9,19 @@ import { discoverAllSessions } from './providers/index.js'
 import type { DateRange, ProjectSummary } from './types.js'
 import { formatCost } from './currency.js'
 import { formatTokens } from './format.js'
+import { TUI_THEME } from './theme.js'
 
 // ============================================================================
 // Display constants
 // ============================================================================
 
-const ORANGE = '#FF8C42'
-const DIM = '#666666'
-const GOLD = '#FFD700'
-const CYAN = '#5BF5E0'
-const GREEN = '#5BF5A0'
-const RED = '#F55B5B'
+const ACCENT = TUI_THEME.accent.primary
+const DIM = TUI_THEME.chrome.disabled
+const VALUE = TUI_THEME.value.primary
+const ACTION_CODE = TUI_THEME.action.code
+const SUCCESS = TUI_THEME.state.success
+const WARNING = TUI_THEME.state.warning
+const ERROR = TUI_THEME.state.error
 
 // ============================================================================
 // Token estimation constants
@@ -155,6 +157,35 @@ async function collectJsonlFiles(dirPath: string): Promise<string[]> {
   return result
 }
 
+function sessionFileCandidates(sourcePath: string): Promise<string[]> {
+  if (sourcePath.endsWith('.json') || sourcePath.endsWith('.jsonl')) return Promise.resolve([sourcePath])
+  return collectJsonlFiles(sourcePath)
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' ? value as Record<string, unknown> : null
+}
+
+function safeJsonParse(text: string): unknown {
+  try { return JSON.parse(text) } catch { return null }
+}
+
+function normalizeToolInput(name: string, input: Record<string, unknown>): Record<string, unknown> {
+  if ((name === 'view' || name === 'Read') && typeof input.path === 'string' && typeof input.file_path !== 'string') {
+    return { ...input, file_path: input.path }
+  }
+  return input
+}
+
+function toolInputOf(toolUse: Record<string, unknown>): Record<string, unknown> {
+  const inputJson = toolUse.input_json
+  if (typeof inputJson === 'string') {
+    const parsed = asRecord(safeJsonParse(inputJson))
+    if (parsed) return parsed
+  }
+  return asRecord(toolUse.input) ?? asRecord(toolUse.arguments) ?? {}
+}
+
 async function isFileStaleForRange(filePath: string, range: DateRange | undefined): Promise<boolean> {
   if (!range) return false
   try {
@@ -206,6 +237,11 @@ export async function scanJsonlFile(
   const content = await readSessionFile(filePath)
   if (content === null) return { calls: [], cwds: [], apiCalls: [], userMessages: [] }
 
+  const wholeFile = asRecord(safeJsonParse(content))
+  if (Array.isArray(wholeFile?.chatHistory)) {
+    return scanAuggieSession(wholeFile, filePath, project, dateRange, recentCutoffMs)
+  }
+
   const calls: ToolCall[] = []
   const cwds: string[] = []
   const apiCalls: ApiCallMeta[] = []
@@ -256,14 +292,78 @@ export async function scanJsonlFile(
     if (!Array.isArray(blocks)) continue
 
     for (const block of blocks) {
-      if (block.type !== 'tool_use') continue
+      if (!block || typeof block !== 'object' || block.type !== 'tool_use') continue
+      const blockName = typeof block.name === 'string' ? block.name : ''
+      const rawInput = asRecord(block.input) ?? {}
       calls.push({
-        name: block.name as string,
-        input: (block.input as Record<string, unknown>) ?? {},
+        name: blockName,
+        input: normalizeToolInput(blockName, rawInput),
         sessionId,
         project,
         recent,
       })
+    }
+  }
+
+  return { calls, cwds, apiCalls, userMessages }
+}
+
+function isoFromMs(value: unknown): string | undefined {
+  return typeof value === 'number' ? new Date(value).toISOString() : undefined
+}
+
+function scanAuggieSession(
+  session: Record<string, unknown>,
+  filePath: string,
+  project: string,
+  dateRange: DateRange | undefined,
+  recentCutoffMs: number,
+): ScanFileResult {
+  const calls: ToolCall[] = []
+  const cwds: string[] = []
+  const apiCalls: ApiCallMeta[] = []
+  const userMessages: string[] = []
+  const sessionId = typeof session.sessionId === 'string' ? session.sessionId : basename(filePath, '.json')
+  const chatHistory = Array.isArray(session.chatHistory) ? session.chatHistory : []
+
+  for (const turn of chatHistory) {
+    const exchange = asRecord(asRecord(turn)?.exchange)
+    if (!exchange) continue
+
+    if (typeof exchange.request_message === 'string') userMessages.push(exchange.request_message)
+
+    const requestNodes = Array.isArray(exchange.request_nodes) ? exchange.request_nodes : []
+    for (const requestNode of requestNodes) {
+      const ide = asRecord(asRecord(requestNode)?.ide_state_node)
+      const terminal = asRecord(ide?.current_terminal)
+      const cwd = terminal?.current_working_directory
+      if (typeof cwd === 'string') cwds.push(cwd)
+    }
+
+    const responseNodes = Array.isArray(exchange.response_nodes) ? exchange.response_nodes : []
+    for (const responseNode of responseNodes) {
+      const node = asRecord(responseNode)
+      if (!node) continue
+      const ts = isoFromMs(node.timestamp_ms) ?? (typeof session.modified === 'string' ? session.modified : undefined)
+      if (!inRange(ts, dateRange)) continue
+      const recent = isRecent(ts, recentCutoffMs)
+
+      const usage = asRecord(node.token_usage)
+      const cacheCreate = typeof usage?.cache_creation_input_tokens === 'number'
+        ? usage.cache_creation_input_tokens
+        : 0
+      if (cacheCreate > 0) apiCalls.push({ cacheCreationTokens: cacheCreate, version: '', recent })
+
+      const toolUse = asRecord(node.tool_use)
+      if (!toolUse) continue
+      const name = typeof toolUse.tool_name === 'string'
+        ? toolUse.tool_name
+        : typeof toolUse.name === 'string'
+          ? toolUse.name
+          : ''
+      if (!name) continue
+      const input = toolInputOf(toolUse)
+      calls.push({ name, input: normalizeToolInput(name, input), sessionId, project, recent })
     }
   }
 
@@ -279,7 +379,7 @@ async function scanSessions(dateRange?: DateRange): Promise<ScanData> {
 
   const tasks: Array<{ file: string; project: string }> = []
   for (const source of sources) {
-    const files = await collectJsonlFiles(source.path)
+    const files = await sessionFileCandidates(source.path)
     for (const file of files) {
       if (await isFileStaleForRange(file, dateRange)) continue
       tasks.push({ file, project: source.project })
@@ -301,14 +401,8 @@ async function scanSessions(dateRange?: DateRange): Promise<ScanData> {
 // Shared helpers
 // ============================================================================
 
-function readJsonFile(path: string): Record<string, unknown> | null {
-  const raw = readSessionFileSync(path)
-  if (raw === null) return null
-  try { return JSON.parse(raw) } catch { return null }
-}
-
 function isReadTool(name: string): boolean {
-  return name === 'Read' || name === 'FileReadTool'
+  return name === 'Read' || name === 'FileReadTool' || name === 'view'
 }
 
 // ============================================================================
@@ -422,8 +516,8 @@ export function detectDuplicateReads(calls: ToolCall[], dateRange?: DateRange): 
   }
 }
 
-const READ_TOOL_NAMES = new Set(['Read', 'Grep', 'Glob', 'FileReadTool', 'GrepTool', 'GlobTool'])
-const EDIT_TOOL_NAMES = new Set(['Edit', 'Write', 'FileEditTool', 'FileWriteTool', 'NotebookEdit'])
+const READ_TOOL_NAMES = new Set(['Read', 'Grep', 'Glob', 'FileReadTool', 'GrepTool', 'GlobTool', 'view', 'codebase-retrieval'])
+const EDIT_TOOL_NAMES = new Set(['Edit', 'Write', 'FileEditTool', 'FileWriteTool', 'NotebookEdit', 'str-replace-editor', 'apply_patch', 'save-file', 'remove-files'])
 
 export function detectLowReadEditRatio(calls: ToolCall[]): WasteFinding | null {
   let reads = 0
@@ -534,7 +628,7 @@ export function detectCacheBloat(apiCalls: ApiCallMeta[], projects: ProjectSumma
     fix: {
       type: 'paste',
       label: 'Check for agent rules bloat or large context files.',
-      text: 'Review CLAUDE.md, .cursor/rules, and other context files for excessive content.',
+      text: 'Review ~/.augment/user-guidelines.md, ~/.augment/rules, AGENTS.md, and repo-local .augment/rules for excessive content.',
     },
     trend,
   }
@@ -715,8 +809,8 @@ export async function scanAndDetect(
 
 const PANEL_WIDTH = 62
 const SEP = '\u2500'
-const IMPACT_COLORS: Record<Impact, string> = { high: RED, medium: ORANGE, low: DIM }
-const GRADE_COLORS: Record<HealthGrade, string> = { A: GREEN, B: GREEN, C: GOLD, D: ORANGE, F: RED }
+const IMPACT_COLORS: Record<Impact, string> = { high: ERROR, medium: WARNING, low: SUCCESS }
+const GRADE_COLORS: Record<HealthGrade, string> = { A: SUCCESS, B: SUCCESS, C: WARNING, D: WARNING, F: ERROR }
 
 function wrap(text: string, width: number, indent: string): string {
   const words = text.split(' ')
@@ -747,24 +841,24 @@ function renderFinding(n: number, f: WasteFinding, costRate: number): string[] {
     chalk.bold(`${n}. ${f.title}`) +
     chalk.hex(DIM)(pad) +
     chalk.hex(IMPACT_COLORS[f.impact])(impactLabel) +
-    (trendBadge ? chalk.hex(GREEN)(trendBadge) : '') +
+    (trendBadge ? chalk.hex(SUCCESS)(trendBadge) : '') +
     chalk.hex(DIM)(` ${SEP}${SEP}${SEP}`))
   lines.push('')
   lines.push(wrap(f.explanation, PANEL_WIDTH - 4, '  '))
   lines.push('')
-  lines.push(chalk.hex(GOLD)(`  Potential savings: ${savings}`))
+  lines.push(chalk.hex(VALUE)(`  Potential savings: ${savings}`))
   lines.push('')
 
   const a = f.fix
   if (a.type === 'file-content') {
     lines.push(chalk.hex(DIM)(`  ${a.label}`))
-    for (const line of a.content.split('\n')) lines.push(chalk.hex(CYAN)(`    ${line}`))
+    for (const line of a.content.split('\n')) lines.push(chalk.hex(ACTION_CODE)(`    ${line}`))
   } else if (a.type === 'command') {
     lines.push(chalk.hex(DIM)(`  ${a.label}`))
-    for (const line of a.text.split('\n')) lines.push(chalk.hex(CYAN)(`    ${line}`))
+    for (const line of a.text.split('\n')) lines.push(chalk.hex(ACTION_CODE)(`    ${line}`))
   } else {
     lines.push(chalk.hex(DIM)(`  ${a.label}`))
-    lines.push(chalk.hex(CYAN)(`    ${a.text}`))
+    lines.push(chalk.hex(ACTION_CODE)(`    ${a.text}`))
   }
   lines.push('')
   return lines
@@ -782,20 +876,20 @@ function renderOptimize(
 ): string {
   const lines: string[] = []
   lines.push('')
-  lines.push(`  ${chalk.bold.hex(ORANGE)('CodeBurn config health')}${chalk.dim('  ' + periodLabel)}`)
+  lines.push(`  ${chalk.bold.hex(ACCENT)('CodeBurn config health')}${chalk.hex(TUI_THEME.text.dim)('  ' + periodLabel)}`)
   lines.push(chalk.hex(DIM)('  ' + SEP.repeat(PANEL_WIDTH)))
 
   const issueSuffix = findings.length > 0 ? `, ${findings.length} issue${findings.length > 1 ? 's' : ''}` : ''
   lines.push('  ' + [
     `${sessionCount} sessions`,
     `${callCount.toLocaleString()} calls`,
-    chalk.hex(GOLD)(formatCost(periodCost)),
+    chalk.hex(VALUE)(formatCost(periodCost)),
     `Health: ${chalk.bold.hex(GRADE_COLORS[healthGrade])(healthGrade)}${chalk.dim(` (${healthScore}/100${issueSuffix})`)}`,
   ].join(chalk.hex(DIM)('   ')))
   lines.push('')
 
   if (findings.length === 0) {
-    lines.push(chalk.hex(GREEN)('  Nothing to fix. Your setup is lean.'))
+    lines.push(chalk.hex(SUCCESS)('  Nothing to fix. Your setup is lean.'))
     lines.push('')
     lines.push(chalk.dim('  CodeBurn optimize scans your Augment sessions for token waste:'))
     lines.push(chalk.dim('  junk directory reads, duplicate file reads, and more.'))
@@ -809,7 +903,7 @@ function renderOptimize(
   const pct = pctRaw >= 1 ? pctRaw.toFixed(0) : pctRaw.toFixed(1)
 
   const costText = costRate > 0 ? ` (~${formatCost(totalCost)}, ~${pct}% of spend)` : ''
-  lines.push(chalk.hex(GREEN)(`  Potential savings: ~${formatTokens(totalTokens)} tokens${costText}`))
+  lines.push(chalk.hex(VALUE)(`  Potential savings: ~${formatTokens(totalTokens)} tokens${costText}`))
   lines.push('')
 
   for (let i = 0; i < findings.length; i++) {
