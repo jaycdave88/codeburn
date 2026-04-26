@@ -7,6 +7,7 @@ import { homedir } from 'os'
 import { readSessionFile, readSessionFileSync } from './fs-utils.js'
 import { discoverAllSessions } from './providers/index.js'
 import type { DateRange, ProjectSummary } from './types.js'
+import { loadBillingConfig, type BillingMode } from './billing.js'
 import { formatCost } from './currency.js'
 import { formatTokens } from './format.js'
 import { TUI_THEME } from './theme.js'
@@ -905,17 +906,17 @@ function wrap(text: string, width: number, indent: string): string {
   return lines.join('\n')
 }
 
-function formatSavings(tokens: number, costRate: number): string {
+function formatSavings(tokens: number, costRate: number, includeCostEstimate = true): string {
   const costSaved = tokens * costRate
-  const costText = costRate > 0 ? ` (~${formatCost(costSaved)} token-pricing estimate)` : ''
+  const costText = includeCostEstimate && costRate > 0 ? ` (~${formatCost(costSaved)} token-pricing estimate)` : ''
   return `~${formatTokens(tokens)} tokens${costText}`
 }
 
-export function renderFinding(n: number, f: WasteFinding, costRate: number): string[] {
+export function renderFinding(n: number, f: WasteFinding, costRate: number, includeCostEstimate = true): string[] {
   const lines: string[] = []
   const impactLabel = f.impact.charAt(0).toUpperCase() + f.impact.slice(1)
   const trendBadge = f.trend === 'improving' ? ' improving \u2193 ' : ''
-  const savings = formatSavings(f.tokensSaved, costRate)
+  const savings = formatSavings(f.tokensSaved, costRate, includeCostEstimate)
   const savingsLabel = f.savingsScope === 'per-call' ? 'Potential savings per affected call' : 'Potential savings'
   const titlePad = PANEL_WIDTH - f.title.length - impactLabel.length - trendBadge.length - 8
   const pad = titlePad > 0 ? ' ' + SEP.repeat(titlePad) + ' ' : '  '
@@ -956,8 +957,16 @@ export function renderOptimize(
   callCount: number,
   healthScore: number,
   healthGrade: HealthGrade,
+  billingMode: BillingMode = 'token_plus',
 ): string {
   const lines: string[] = []
+  const includeCostEstimate = billingMode === 'token_plus'
+  const billingStat = includeCostEstimate
+    ? `Billed Cost estimate: ${formatCost(periodCost)}`
+    : 'Billing: Credits'
+  const billingFootnote = includeCostEstimate
+    ? '  Billed Cost estimates only; not invoice-accurate.'
+    : '  Token savings shown; set CODEBURN_BILLING_MODE=token_plus for Billed Cost USD estimates.'
   lines.push('')
   lines.push(`  ${chalk.bold.hex(ACCENT)('CodeBurn config health')}${chalk.hex(TUI_THEME.text.dim)('  ' + periodLabel)}`)
   lines.push(chalk.hex(DIM)('  ' + SEP.repeat(PANEL_WIDTH)))
@@ -966,7 +975,7 @@ export function renderOptimize(
   lines.push('  ' + [
     `${sessionCount} sessions`,
     `${callCount.toLocaleString()} calls`,
-    chalk.hex(VALUE)(formatCost(periodCost)),
+    chalk.hex(VALUE)(billingStat),
     `Health: ${chalk.bold.hex(GRADE_COLORS[healthGrade])(healthGrade)}${chalk.dim(` (${healthScore}/100${issueSuffix})`)}`,
   ].join(chalk.hex(DIM)('   ')))
   lines.push('')
@@ -976,6 +985,7 @@ export function renderOptimize(
     lines.push('')
     lines.push(chalk.dim('  CodeBurn optimize scans your Augment sessions for token waste:'))
     lines.push(chalk.dim('  junk directory reads, duplicate file reads, and more.'))
+    lines.push(chalk.dim(billingFootnote))
     lines.push('')
     return lines.join('\n')
   }
@@ -988,21 +998,21 @@ export function renderOptimize(
   const pct = pctRaw >= 1 ? pctRaw.toFixed(0) : pctRaw.toFixed(1)
 
   if (totalTokens > 0) {
-    const costText = costRate > 0 ? ` (~${formatCost(totalCost)} token-pricing estimate, ~${pct}% of token-priced spend)` : ''
+    const costText = includeCostEstimate && costRate > 0 ? ` (~${formatCost(totalCost)} token-pricing estimate, ~${pct}% of token-priced spend)` : ''
     lines.push(chalk.hex(VALUE)(`  Potential aggregate savings: ~${formatTokens(totalTokens)} tokens${costText}`))
   }
   const perCallTokens = perCallFindings.reduce((s, f) => s + f.tokensSaved, 0)
   if (perCallTokens > 0) {
-    lines.push(chalk.hex(VALUE)(`  Potential per-call savings: ${formatSavings(perCallTokens, costRate)}`))
+    lines.push(chalk.hex(VALUE)(`  Potential per-call savings: ${formatSavings(perCallTokens, costRate, includeCostEstimate)}`))
   }
   lines.push('')
 
   for (let i = 0; i < findings.length; i++) {
-    lines.push(...renderFinding(i + 1, findings[i], costRate))
+    lines.push(...renderFinding(i + 1, findings[i], costRate, includeCostEstimate))
   }
 
   lines.push(chalk.hex(DIM)('  ' + SEP.repeat(PANEL_WIDTH)))
-  lines.push(chalk.dim('  Estimates only.'))
+  lines.push(chalk.dim(billingFootnote))
   lines.push('')
   return lines.join('\n')
 }
@@ -1019,11 +1029,14 @@ export async function runOptimize(
 
   process.stderr.write(chalk.dim('  Analyzing your sessions...\n'))
 
+  const billingConfig = loadBillingConfig()
   const { findings, costRate, healthScore, healthGrade } = await scanAndDetect(projects, dateRange)
   const sessions = projects.flatMap(p => p.sessions)
-  const periodCost = projects.reduce((s, p) => s + p.totalCostUSD, 0)
+  const periodCost = billingConfig.mode === 'token_plus'
+    ? sessions.reduce((s, session) => s + (session.totalBilledAmountUsd ?? session.totalCostUSD), 0)
+    : projects.reduce((s, p) => s + p.totalCostUSD, 0)
   const callCount = projects.reduce((s, p) => s + p.totalApiCalls, 0)
 
-  const output = renderOptimize(findings, costRate, periodLabel, periodCost, sessions.length, callCount, healthScore, healthGrade)
+  const output = renderOptimize(findings, costRate, periodLabel, periodCost, sessions.length, callCount, healthScore, healthGrade, billingConfig.mode)
   console.log(output)
 }
