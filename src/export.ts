@@ -271,8 +271,8 @@ function buildReadme(periods: PeriodExport[], billingConfig: BillingConfig): str
   const { code } = getCurrency()
   const generated = new Date().toISOString()
   const billingDescription = billingConfig.mode === 'credits'
-    ? 'credits mode (Augment credits; USD fields are token-pricing estimates only)'
-    : 'token_plus mode (base USD + surcharge USD = billed amount USD)'
+    ? 'Credits mode (Augment Credits; USD fields are token-pricing estimates only)'
+    : 'Billed Cost mode (token_plus; base USD + surcharge USD = billed amount USD)'
   const lines = [
     'CodeBurn Usage Export',
     '====================',
@@ -295,9 +295,9 @@ function buildReadme(periods: PeriodExport[], billingConfig: BillingConfig): str
     '',
     'Notes',
     '-----',
-    '  Credits-mode billing columns use Augment credits. Cost Estimate (USD) columns are',
+    '  Credits-mode billing columns use Augment Credits. Cost Estimate (USD) columns are',
     '  token-pricing estimates and are not authoritative Augment credit billing values.',
-    '  Token+ billing columns use base, surcharge, and billed USD. Tokens are raw integer',
+    '  Billed Cost (token_plus) columns use base, surcharge, and billed USD. Tokens are raw integer',
     '  counts from provider telemetry. Share (%) is relative to the active billing metric.',
     '',
   ]

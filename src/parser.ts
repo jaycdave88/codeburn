@@ -80,7 +80,7 @@ function buildSessionSummary(
   let totalCacheWrite = 0
   // Per-call credits summed for fallback (older sessions without sessionCreditUsage)
   let summedCredits: number | null = null
-  // Billing aggregates (Token+ mode)
+  // Billing aggregates (Billed Cost / token_plus mode)
   let totalBaseCostUsd: number | null = null
   let totalSurchargeUsd: number | null = null
   let totalBilledAmountUsd: number | null = null

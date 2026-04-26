@@ -9,11 +9,11 @@
 set -euo pipefail
 
 # ---- Billing mode -----------------------------------------
-# "credits"    = Augment credits (default, ground-truth via BILLING_METADATA)
-# "token_plus" = USD estimate (synthesized, not invoice-accurate)
+# "credits"    = Credits mode (default; Augment credits via local billing data)
+# "token_plus" = Billed Cost mode (USD token-pricing estimate; not invoice-accurate)
 : "${BILLING_MODE:=credits}"
 
-# ---- Surcharge (token_plus mode only) ---------------------
+# ---- Surcharge (Billed Cost / token_plus mode only) -------
 # 0     = Self-serve CBP / no surcharge (default)
 # 0.3   = Enterprise USD with contracted 30% surcharge
 # Decimal only. Ignored in credits mode.
@@ -110,8 +110,8 @@ if [[ "${1:-}" == "--check" ]]; then
   if [[ "$COST" == "null" ]]; then ok "overview.cost == null"; else err "overview.cost != null (got: $COST)"; ((FAILURES++)); fi
   if [[ "$CREDITS" =~ ^[0-9]+(\.[0-9]+)?$ || "$CREDITS" == "null" ]]; then ok "overview.creditsAugment is number or null"; else err "overview.creditsAugment invalid (got: $CREDITS)"; ((FAILURES++)); fi
 
-  # Check 2: token_plus mode, 0% surcharge
-  echo -e "\n${CYAN}[2/5] Token_plus mode (0% surcharge)...${NC}"
+  # Check 2: Billed Cost mode (token_plus), 0% surcharge
+  echo -e "\n${CYAN}[2/5] Billed Cost mode (token_plus, 0% surcharge)...${NC}"
   OUTPUT=$(CODEBURN_BILLING_MODE=token_plus CODEBURN_SURCHARGE_RATE=0 node dist/cli.js today --format json 2>/dev/null || true)
   MODE=$(json_get "$OUTPUT" '.billing.mode')
   SURCHARGE=$(json_get "$OUTPUT" '.billing.surchargeRate')
@@ -124,8 +124,8 @@ if [[ "${1:-}" == "--check" ]]; then
   if [[ "$COST" =~ ^[0-9]+(\.[0-9]+)?$ || "$COST" == "null" ]]; then ok "overview.cost is number or null"; else err "overview.cost invalid (got: $COST)"; ((FAILURES++)); fi
   if [[ "$CREDITS" == "null" ]]; then ok "overview.creditsAugment == null"; else err "overview.creditsAugment != null (got: $CREDITS)"; ((FAILURES++)); fi
 
-  # Check 3: token_plus mode, 30% surcharge
-  echo -e "\n${CYAN}[3/5] Token_plus mode (30% surcharge)...${NC}"
+  # Check 3: Billed Cost mode (token_plus), 30% surcharge
+  echo -e "\n${CYAN}[3/5] Billed Cost mode (token_plus, 30% surcharge)...${NC}"
   OUTPUT=$(CODEBURN_BILLING_MODE=token_plus CODEBURN_SURCHARGE_RATE=0.3 node dist/cli.js today --format json 2>/dev/null || true)
   SURCHARGE=$(json_get "$OUTPUT" '.billing.surchargeRate')
   
@@ -243,9 +243,9 @@ fi
 # Build mode display string
 if [[ "$BILLING_MODE" == "token_plus" ]]; then
   if [[ "$SURCHARGE_RATE" != "0" ]]; then
-    MODE_DISPLAY="USD estimate (token_plus, surcharge ${SURCHARGE_RATE}x)"
+    MODE_DISPLAY="Billed Cost (token_plus, surcharge ${SURCHARGE_RATE}x)"
   else
-    MODE_DISPLAY="USD estimate (token_plus)"
+    MODE_DISPLAY="Billed Cost (token_plus)"
   fi
 else
   MODE_DISPLAY="credits"
@@ -259,7 +259,7 @@ fi
   echo -e "  Format:   ${CYAN}$FORMAT${NC}"
   echo -e "  Sessions: ${CYAN}$SESSION_COUNT files${NC} in $SESSIONS_DIR"
   echo -e "${YELLOW}Tips:${NC}"
-  echo "  Switch mode:   BILLING_MODE=token_plus ./run.sh"
+  echo "  Billed Cost:   BILLING_MODE=token_plus ./run.sh"
   echo "  JSON export:   FORMAT=json ./run.sh | jq '.billing'"
   echo "  Find waste:    node dist/cli.js optimize"
   echo "  Change ccy:    node dist/cli.js currency GBP"

@@ -53,12 +53,12 @@ describe('CLI option validation', () => {
 })
 
 describe('CLI help wording', () => {
-  it('describes Auggie tokens and credits in root help', () => {
+  it('describes Auggie Credits and Billed Cost in root help', () => {
     const result = runCli(['--help'])
 
     expect(result.error).toBeUndefined()
     expect(result.status).toBe(0)
-    expect(result.stdout).toContain('See where your Auggie tokens (and credits) go')
+    expect(result.stdout).toContain('See where your Auggie Credits and Billed Cost estimates go')
   })
 
   it('shows accepted choices and defaults for report options', () => {

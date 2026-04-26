@@ -22,7 +22,6 @@ export const AUGGIE_TOKENS = {
   magentaBright: '#5242ff',
   magentaDim: '#818bf7',
   cyan: '#82aaff',
-  cyanBright: '#80d8f',
   cyanDim: '#b2ccd6',
   orange: '#ff9800',
   orangeBright: '#ffb74d',

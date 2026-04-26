@@ -358,6 +358,36 @@ describe('optimize rendering semantics', () => {
     expect(output).toContain('token-priced spend')
   })
 
+  it('suppresses USD estimates and explains Billed Cost mode in credits mode', () => {
+    const perCall: WasteFinding = { ...finding, tokensSaved: 3000, savingsScope: 'per-call' }
+    const output = renderOptimize([finding, perCall], 0.00001, '30 Days', 10, 1, 1, 90, 'A', 'credits')
+
+    expect(output).toContain('Billing: Credits')
+    expect(output).toContain('Potential aggregate savings: ~100.0K tokens')
+    expect(output).toContain('Potential per-call savings: ~3.0K tokens')
+    expect(output).toContain('Token savings shown; set CODEBURN_BILLING_MODE=token_plus for Billed Cost USD estimates.')
+    expect(output).not.toContain('$')
+    expect(output).not.toContain('token-pricing estimate')
+    expect(output).not.toContain('token-priced spend')
+  })
+
+  it('keeps Billed Cost estimate details with non-invoice wording in token_plus mode', () => {
+    const output = renderOptimize([finding], 0.00001, '30 Days', 10, 1, 1, 90, 'A', 'token_plus')
+
+    expect(output).toContain('Billed Cost estimate: $10.00')
+    expect(output).toContain('token-pricing estimate')
+    expect(output).toContain('token-priced spend')
+    expect(output).toContain('Billed Cost estimates only; not invoice-accurate.')
+  })
+
+  it('keeps credits-mode Billed Cost guidance when there are no findings', () => {
+    const output = renderOptimize([], 0.00001, '30 Days', 10, 1, 1, 100, 'A', 'credits')
+
+    expect(output).toContain('Nothing to fix')
+    expect(output).toContain('Token savings shown; set CODEBURN_BILLING_MODE=token_plus for Billed Cost USD estimates.')
+    expect(output).not.toContain('$')
+  })
+
   it('labels per-call findings separately from aggregate savings', () => {
     const perCall: WasteFinding = { ...finding, tokensSaved: 3000, savingsScope: 'per-call' }
     const output = renderOptimize([finding, perCall], 0, '30 Days', 0, 1, 1, 90, 'A')

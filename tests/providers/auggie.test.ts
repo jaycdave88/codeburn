@@ -377,6 +377,30 @@ describe('auggie provider - legacy schema', () => {
       expect(call.model).toBe('gpt-5.1')
     }
   })
+
+  it('keeps unverified xAI and MiniMax provider defaults unpriced', async () => {
+    const raw = await readFile(join(FIXTURE_DIR, 'legacy-empty-modelid.json'), 'utf-8')
+    const cases = [
+      ['xai', 'auggie-xai-unknown'],
+      ['minimax', 'auggie-minimax-unknown'],
+    ] as const
+
+    for (const [provider, expectedModel] of cases) {
+      const path = join(sessionsDir, `${provider}-empty-modelid.json`)
+      await writeFile(path, raw.replace('"provider": "openai"', `"provider": "${provider}"`), 'utf-8')
+      const calls = await collectCalls(path)
+      await waitForCacheFile(join(cacheDir, 'auggie', `${provider}-empty-modelid.json`))
+
+      expect(calls.length).toBe(2)
+      for (const call of calls) {
+        expect(call.model).toBe(expectedModel)
+        expect(call.pricingStatus).toBe('unpriced')
+        expect(call.costUSD).toBe(0)
+        expect(call.billing?.baseCostUsd).toBeNull()
+        expect(call.warnings?.[0]).toContain('No verified Auggie provider default')
+      }
+    }
+  })
 })
 
 describe('auggie provider - MCP routing', () => {
@@ -419,6 +443,8 @@ describe('auggie provider - display helpers', () => {
     const provider = createAuggieProvider(sessionsDir)
     expect(provider.modelDisplayName('auggie-unknown')).toBe('Auggie (unknown model)')
     expect(provider.modelDisplayName('auggie-legacy')).toBe('Auggie (legacy session)')
+    expect(provider.modelDisplayName('auggie-xai-unknown')).toBe('Auggie xAI (unknown model)')
+    expect(provider.modelDisplayName('auggie-minimax-unknown')).toBe('Auggie MiniMax (unknown model)')
     expect(provider.modelDisplayName('claude-sonnet-4-5')).toBe('claude-sonnet-4-5')
   })
 

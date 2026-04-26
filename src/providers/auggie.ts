@@ -21,8 +21,11 @@ const BASH_TOOL_NAME = 'launch-process'
 const MCP_TOOL_SUFFIX = '-mcp'
 
 /// Per-provider default model when agentState.modelId is empty. Indexed by metadata.provider
-/// on the response_node. Augment routes across Anthropic / OpenAI / Google / xAI / Minimax, so
-/// the default should match the provider the call went to. Users can override any of these via env:
+/// on the response_node. Augment routes across Anthropic / OpenAI / Google / xAI / MiniMax, so
+/// the default should match the provider the call went to only when verified. xAI/MiniMax use
+/// provider-scoped unknown sentinels until Auggie emits verified model IDs; this keeps usage
+/// visible and unpriced instead of making synthesized billing look authoritative. Users can
+/// override any of these via env:
 ///   CODEBURN_AUGGIE_DEFAULT_ANTHROPIC
 ///   CODEBURN_AUGGIE_DEFAULT_OPENAI
 ///   CODEBURN_AUGGIE_DEFAULT_GEMINI
@@ -32,8 +35,8 @@ const PROVIDER_DEFAULT_MODEL: Record<string, string> = {
   anthropic: 'claude-sonnet-4-5',
   openai: 'gpt-5.1',
   gemini: 'gemini-3-pro',
-  xai: 'grok-2', // TODO(billing): confirm grok-2 is the correct default for xAI provider
-  minimax: 'minimax', // TODO(billing): confirm actual model name for minimax provider
+  xai: 'auggie-xai-unknown',
+  minimax: 'auggie-minimax-unknown',
 }
 
 /// Built-in aliases are intentionally empty unless a mapping has been verified.
@@ -158,9 +161,12 @@ function selectModel(session: AuggieSession, nodeProvider: string | null | undef
 function pricingWarnings(model: string, hasPricing: boolean): string[] {
   if (hasPricing) return []
   if (model === 'auggie-legacy') {
-    return ['No recoverable Auggie model ID; USD estimates and synthesized credits omit this usage.']
+    return ['No recoverable Auggie model ID; Billed Cost estimates and synthesized Credits omit this usage.']
   }
-  return [`No token pricing available for model "${model}"; raw model ID is preserved and USD estimates/synthesized credits omit this usage.`]
+  if (model === 'auggie-xai-unknown' || model === 'auggie-minimax-unknown') {
+    return [`No verified Auggie provider default for "${model}"; Billed Cost estimates and synthesized Credits omit this usage.`]
+  }
+  return [`No token pricing available for model "${model}"; raw model ID is preserved and Billed Cost estimates/synthesized Credits omit this usage.`]
 }
 
 /// Scans response_nodes (in particular type-8 ASSISTANT_CHAT_RESULT nodes) to find
@@ -684,6 +690,8 @@ export function createAuggieProvider(sessionsDirOverride?: string): Provider {
     modelDisplayName(model: string): string {
       if (model === 'auggie-unknown') return 'Auggie (unknown model)'
       if (model === 'auggie-legacy') return 'Auggie (legacy session)'
+      if (model === 'auggie-xai-unknown') return 'Auggie xAI (unknown model)'
+      if (model === 'auggie-minimax-unknown') return 'Auggie MiniMax (unknown model)'
       return model
     },
 
