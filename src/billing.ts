@@ -138,7 +138,7 @@ export function computeBilling(
     }
   }
 
-  // Token+ mode: NO credits. Base + surcharge = billed.
+  // Billed Cost (token_plus) mode: NO credits. Base + surcharge = billed.
   const surchargeUsd = baseCostUsd !== null ? baseCostUsd * config.surchargeRate : null
   const billedAmountUsd = baseCostUsd !== null && surchargeUsd !== null ? baseCostUsd + surchargeUsd : null
 
