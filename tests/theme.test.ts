@@ -3,9 +3,10 @@ import { describe, expect, it } from 'vitest'
 import { AUGGIE_TOKENS, TUI_THEME, gradientColor } from '../src/theme.js'
 
 describe('Auggie TUI theme', () => {
-  it('keeps the raw upstream cyanBright token for fidelity only', () => {
-    expect(AUGGIE_TOKENS.cyanBright).toBe('#80d8f')
-    expect(Object.values(TUI_THEME).flatMap(value => Object.values(value))).not.toContain(AUGGIE_TOKENS.cyanBright)
+  it('contains only valid hex color tokens', () => {
+    for (const value of Object.values(AUGGIE_TOKENS).flat()) {
+      expect(value).toMatch(/^#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/)
+    }
   })
 
   it('maps primary values and usage bars to approved Auggie semantics', () => {
