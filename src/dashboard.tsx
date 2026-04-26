@@ -173,7 +173,7 @@ function Overview({ projects, label, width, billingMode, surchargeRate }: { proj
     if (acc === null && p.totalCredits === null) return null
     return (acc ?? 0) + (p.totalCredits ?? 0)
   }, null)
-  // Token+ aggregates
+  // Billed Cost (token_plus) aggregates
   const totalBaseCostUsd = allSessions.reduce<number | null>((acc, sess) => {
     if (acc === null && sess.totalBaseCostUsd == null) return null
     return (acc ?? 0) + (sess.totalBaseCostUsd ?? 0)

@@ -69,7 +69,7 @@ async function runJsonReport(period: Period, project: string[], exclude: string[
 
 const program = new Command()
   .name('codeburn')
-  .description('See where your Auggie tokens (and credits) go - by task, tool, model, and project')
+  .description('See where your Auggie Credits and Billed Cost estimates go - by task, tool, model, and project')
   .version(version)
   .option('--verbose', 'print warnings to stderr on read failures and skipped files')
 

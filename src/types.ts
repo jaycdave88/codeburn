@@ -141,7 +141,7 @@ export type SessionSummary = {
   subAgentCreditsUsedUnconfirmed?: number | null
   /// Billing mode in effect for this session (credits or token_plus).
   billingMode?: BillingMode
-  /// Token+ billing aggregates (null in credits mode).
+  /// Billed Cost (token_plus) billing aggregates (null in credits mode).
   totalBaseCostUsd?: number | null
   totalSurchargeUsd?: number | null
   totalBilledAmountUsd?: number | null
@@ -154,7 +154,7 @@ export type SessionSummary = {
     costUSD: number
     credits: number | null
     tokens: TokenUsage
-    /// Token+ billing aggregates per model.
+    /// Billed Cost (token_plus) billing aggregates per model.
     baseCostUsd?: number | null
     surchargeUsd?: number | null
     billedAmountUsd?: number | null
@@ -192,7 +192,7 @@ export type ProjectSummary = {
   subAgentCreditsUsedUnconfirmed?: number | null
   /// Billing mode (from first session with billing data).
   billingMode?: BillingMode
-  /// Token+ billing aggregates (null in credits mode).
+  /// Billed Cost (token_plus) billing aggregates (null in credits mode).
   totalBaseCostUsd?: number | null
   totalSurchargeUsd?: number | null
   totalBilledAmountUsd?: number | null
