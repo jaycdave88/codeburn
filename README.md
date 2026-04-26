@@ -1,4 +1,4 @@
-![CodeBurn](https://cdn.jsdelivr.net/gh/getagentseal/codeburn@main/assets/logo.png)
+![CodeBurn](./assets/logo.png)
 
 # CodeBurn
 
@@ -9,7 +9,7 @@ A usage analytics tool for [Augment Code (Auggie)](https://www.augmentcode.com/)
 ![node version](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)
 ![license](https://img.shields.io/npm/l/codeburn.svg)
 
-![CodeBurn TUI dashboard](https://raw.githubusercontent.com/getagentseal/codeburn/main/assets/dashboard.jpg)
+![CodeBurn TUI dashboard](./assets/dashboard.jpg)
 
 *Screenshot predates 2.0.0 and will be updated.*
 
@@ -31,7 +31,7 @@ Override the Augment directory with `AUGMENT_HOME=/path/to/.augment` if you keep
 
 ## Install
 
-This fork is Auggie-specific and runs from source. Clone, build, then either invoke directly or link it into `$PATH`:
+This private/unlinked Auggie-specific fork runs from source. Use your authorized local checkout or clone the private repository, then build and either invoke directly or link it into `$PATH`:
 
 ### Quickstart (one command)
 
@@ -64,6 +64,8 @@ codeburn                                 # now works anywhere
 During development, `npm run dev -- report` runs the CLI directly via `tsx` without a build step.
 
 > **Note:** The upstream `codeburn` package on npm (v1.x) is a different build. Running `npm install -g codeburn` or `npx codeburn` installs the upstream package, **not this fork**.
+
+> **Support:** Use the private repository/workspace support process for this fork. Do not open public upstream issues or PRs for this private build.
 
 ## Usage
 
@@ -151,7 +153,7 @@ codeburn optimize -p week      # last 7 days
 
 Detects files re-read across sessions, low Read:Edit ratios, uncapped bash output, cache-creation overhead, and junk directory reads. Each finding shows estimated token and dollar savings plus a ready-to-paste fix, rolled up into an A-F setup health grade. Repeat runs classify findings as new / improving / resolved against a 48-hour window. Press `o` in the dashboard to open findings inline, `b` to return.
 
-![CodeBurn optimize output](https://raw.githubusercontent.com/getagentseal/codeburn/main/assets/optimize.jpg)
+![CodeBurn optimize output](./assets/optimize.jpg)
 
 *Screenshot predates 2.0.0 and will be updated.*
 

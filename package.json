@@ -32,12 +32,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/getagentseal/codeburn.git"
+    "url": "git+https://github.com/jaycdave88/codeburn.git"
   },
   "bugs": {
-    "url": "https://github.com/getagentseal/codeburn/issues"
+    "email": "hello@agentseal.org"
   },
-  "homepage": "https://github.com/getagentseal/codeburn#readme",
+  "homepage": "https://agentseal.org",
   "dependencies": {
     "chalk": "^5.4.1",
     "commander": "^13.1.0",
