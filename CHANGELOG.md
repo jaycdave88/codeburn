@@ -1,6 +1,6 @@
 # Changelog
 
-> Current Auggie billing semantics are documented in [README.md](./README.md). Older release notes below are historical and may predate `creditUsage` precedence, unknown-model, and sub-agent-credit readiness decisions.
+> Current Auggie-only CLI behavior, billing semantics, and customer-facing **Credits** / **Billed Cost** labels are documented in [README.md](./README.md). Older release notes below are historical and intentionally preserve references to removed macOS menubar, Claude Code, Codex, Cursor, earlier Token+/USD-estimate wording, and other pre-fork surfaces; do not treat those archival entries as current readiness guidance.
 
 ## [2.0.1] - 2026-04-20
 

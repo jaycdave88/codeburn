@@ -1,12 +1,14 @@
 # CodeBurn Audit Report (1.0.0)
 
-> **Historical snapshot:** This audit was generated for CodeBurn 1.0.0 before the Auggie-only CLI/readiness waves. It references removed macOS app files, older test counts, and pre-readiness billing semantics. Use the README billing/data-privacy sections and the current test/build/typecheck results as the customer-readiness source of truth.
+> **Historical snapshot — not current readiness status:** This audit was generated for CodeBurn 1.0.0 before the Auggie-only CLI/readiness waves. It intentionally preserves references to removed macOS menubar files, older provider scope, older test counts, and pre-readiness billing semantics. For the current product state, use README.md, CHANGELOG.md 2.0.1+, and the latest test/build/typecheck results.
+
+> **Current boundary:** CodeBurn is now an Auggie-only, CLI-only local analytics tool. Historical `mac/`, menubar, Claude Code, Codex, and Cursor references below describe removed or pre-fork surfaces and should not be treated as customer-facing release readiness guidance.
 
 Generated: 2026-04-19Branch: feat/auggie-only
 
 ## Executive Summary
 
-CodeBurn 1.0.0 is in excellent health. The audit found 0 critical or high-severity issues. All 172 tests pass (168 TypeScript, 4 Swift), TypeScript type-checks cleanly, and npm audit reports 0 vulnerabilities across 178 dependencies. Two medium-severity performance findings relate to missing fetch timeouts in currency.ts and models.ts. The codebase follows defense-in-depth patterns throughout: symlink rejection, size caps on reads, regex allowlists for shell arguments, and prototype pollution guards.
+At the time of this 1.0.0 audit, CodeBurn was in excellent health. The audit found 0 critical or high-severity issues. All 172 tests passed (168 TypeScript, 4 Swift), TypeScript type-checks cleanly, and npm audit reported 0 vulnerabilities across 178 dependencies. Two medium-severity performance findings related to missing fetch timeouts in currency.ts and models.ts. The then-current codebase followed defense-in-depth patterns throughout: symlink rejection, size caps on reads, regex allowlists for shell arguments, and prototype pollution guards.
 
 | Severity | Count |
 | --- | --- |
@@ -16,9 +18,9 @@ CodeBurn 1.0.0 is in excellent health. The audit found 0 critical or high-severi
 | Low | 6 |
 | Info | 4 |
 
-## Scope and Methodology
+## Historical Scope and Methodology
 
-**Scope:** TypeScript CLI (src/), Vitest test suite (tests/), macOS menubar app (mac/), CI workflows (.github/workflows/)
+**Historical scope for this 1.0.0 audit:** TypeScript CLI (src/), Vitest test suite (tests/), macOS menubar app (mac/), CI workflows (.github/workflows/). The macOS menubar surface was later removed; keep this line only as audit history.
 
 **Methodology:**
 
@@ -29,9 +31,9 @@ CodeBurn 1.0.0 is in excellent health. The audit found 0 critical or high-severi
 5. Performance review (sync I/O, unbounded reads, missing timeouts, cache eviction)
 6. npm audit for dependency vulnerabilities
 
-## Discovery
+## Historical Discovery
 
-### Repository Layout
+### Repository Layout at Audit Time
 
 ```
 codeburn/
@@ -51,7 +53,7 @@ codeburn/
 └── .github/workflows/      # CI configuration
 ```
 
-### Key Entry Points
+### Key Entry Points at Audit Time
 
 | Entry | File | Description |
 | --- | --- | --- |
