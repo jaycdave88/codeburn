@@ -11,6 +11,77 @@ A usage analytics tool for [Augment Code (Auggie)](https://www.augmentcode.com/)
 
 ![CodeBurn TUI dashboard](./assets/dashboard.jpg)
 
+<details>
+<summary>Text version of this diagram</summary>
+
+Dashboard layout (TUI). The live screen arranges panels in a two-column grid:
+row 1 = Daily Activity | By Project, row 2 = By Activity | By Model,
+row 3 = Core Tools | Shell Commands, row 4 = MCP Servers (full width).
+Panels are shown stacked below to keep the columns aligned.
+
+```
+┌───────────────────────────────────────────────────────────────────────┐
+│  Today    [ 7 Days ]    30 Days    This Month                  [p] All │
+└───────────────────────────────────────────────────────────────────────┘
+┌─ CodeBurn · 7 Days ───────────────────────────────────────────────────┐
+│ $1497.93 cost    17,277 calls    2204 sessions    100% cache hit       │
+│ 891.6K in    5.2M out    2394.6M cached    45.3M written               │
+└───────────────────────────────────────────────────────────────────────┘
+
+┌─ Daily Activity ───────────────────┐   ┌─ By Project ──────────────────────────┐
+│                      cost    calls  │   │                          cost    sess  │
+│ 04-07             $173.92     2656  │   │ Users/torukmakto      $1468.27    514  │
+│ 04-08             $316.50     3500  │   │ dashboard/backend       $22.17   1339  │
+│ 04-09             $325.20     4091  │   │ dashboard/agentseal      $4.84    329  │
+│ 04-10             $123.43     1059  │   │ AgentSeal/dashboard      $2.06      4  │
+│ 04-11             $194.34     1151  │   │ packages/graphify       $0.420      7  │
+│ 04-12              $99.10      963  │   │ AgentSeal/dashboard     $0.179     11  │
+│ 04-13             $164.94     2759  │   └────────────────────────────────────────┘
+│ 04-14             $100.21     1096  │
+└─────────────────────────────────────┘
+
+┌─ By Activity ──────────────────────────────┐   ┌─ By Model ─────────────────────────┐
+│                    cost    turns    1-shot  │   │                      cost    calls  │
+│ Coding          $554.00      519       90%  │   │ Opus 4.6         $1420.31    12682  │
+│ Exploration     $276.81      799        -   │   │ Sonnet 4.6         $54.50     2611  │
+│ Debugging       $150.32      202       89%  │   │ Haiku 4.5          $18.90     1689  │
+│ Feature Dev     $130.56      299       88%  │   │ Opus 4.5            $2.17       21  │
+│ Delegation      $125.04       87       90%  │   │ GPT-5               $2.06       89  │
+│ Conversation     $99.27     1358        -   │   │ <synthetic>       $0.0000      185  │
+│ Testing          $71.04       85        -   │   └─────────────────────────────────────┘
+│ Brainstorming    $32.87      406        -   │
+│ Refactoring      $27.73       34       91%  │
+│ Build/Deploy     $11.33       10        -   │
+│ General           $7.10       38        -   │
+│ Git Ops           $6.64       12        -   │
+│ Planning          $5.24        9        -   │
+└─────────────────────────────────────────────┘
+
+┌─ Core Tools ───────────┐   ┌─ Shell Commands ───────┐
+│                  calls  │   │                  calls  │
+│ Bash             2518   │   │ git               672   │
+│ Read             1294   │   │ head              474   │
+│ Edit              831   │   │ tail              440   │
+│ Grep              366   │   │ python3           375   │
+│ Write             191   │   │ grep              355   │
+│ TaskUpdate        179   │   │ echo              264   │
+│ Agent             120   │   │ python            246   │
+│ TaskCreate         87   │   │ ls                236   │
+│ ToolSearch         54   │   │ npx               217   │
+│ Glob               47   │   │ gh                 99   │
+└────────────────────────┘   └────────────────────────┘
+
+┌─ MCP Servers ─────────────────────┐
+│                            calls   │
+│ playwright                   32    │
+│ sequential-thinking          10    │
+│ plugin_context7_context7      4    │
+└────────────────────────────────────┘
+```
+
+</details>
+
+
 *Historical screenshot from before 2.0.0; local placeholder retained until a refreshed Auggie-only CLI screenshot is captured.*
 
 ## Project status
@@ -155,6 +226,75 @@ codeburn optimize -p week      # last 7 days
 Detects files re-read across sessions, low Read:Edit ratios, uncapped bash output, cache-creation overhead, and junk directory reads. Each finding shows estimated token and dollar savings plus a ready-to-paste fix, rolled up into an A-F setup health grade. Repeat runs classify findings as new / improving / resolved against a 48-hour window. Press `o` in the dashboard to open findings inline, `b` to return.
 
 ![CodeBurn optimize output](./assets/optimize.jpg)
+
+<details>
+<summary>Text version of this diagram</summary>
+
+```
+┌───────────────────────────────────────────────────────────────────────┐
+│  [ Today ]   7 Days   30 Days   This Month   All Time          [p] All │
+└───────────────────────────────────────────────────────────────────────┘
+┌─ CodeBurn Optimize · Today ───────────────────────────────────────────┐
+│ Setup: F (26/100)                                                      │
+│ Savings: ~361.3K tokens (~$0.159, ~0.1% of spend)                     │
+└───────────────────────────────────────────────────────────────────────┘
+
+┌─ 1. Claude edits more than it reads ─────────────────────────── High ─┐
+│ Claude made 411 reads and 217 edits (ratio 1.9:1). A healthy ratio    │
+│ is 4+ reads per edit. Editing without reading leads to retries and    │
+│ wasted tokens.                                                        │
+│ Savings: ~274.2K tokens (~$0.120)                                     │
+│ Add to your CLAUDE.md:                                                 │
+│   Before editing any file, read it first. Before modifying a          │
+│   function, grep for all callers. Research before you edit.           │
+└───────────────────────────────────────────────────────────────────────┘
+
+┌─ 2. Claude is re-reading the same files ─────────────────────── High ─┐
+│ 102 redundant re-reads across sessions. Top repeats: dashboard.tsx    │
+│ (33x), optimize.ts (32x), pi.ts (8x). Each re-read loads the same     │
+│ content into context again.                                           │
+│ Savings: ~61.2K tokens (~$0.027)                                      │
+│ Point Claude at exact locations in your prompt, for example:          │
+│   In <file> lines <start>-<end>, look at the <function> function.     │
+└───────────────────────────────────────────────────────────────────────┘
+
+┌─ 3. Add .claudeignore to 3 projects ─────────────────────────── High ─┐
+│ 3 projects have build/dependency folders (node_modules, .git, etc.)   │
+│ but no .claudeignore: ~, ~/codeburn, ~/codeburn-optimize. Without it, │
+│ Claude can wander into them.                                          │
+│ Savings: ~18.0K tokens (~$0.0079)                                     │
+│ Create .claudeignore in each project root:                            │
+│   node_modules                                                        │
+│   .git                                                                │
+│   dist                                                                │
+│   build                                                               │
+│   __pycache__                                                         │
+│   .next                                                               │
+│   .nuxt                                                               │
+│   .output                                                             │
+└───────────────────────────────────────────────────────────────────────┘
+
+┌─ 4. 40 skills you never use ─────────────────────────────────── High ─┐
+│ In ~/.claude/skills/ but not invoked this period: autoplan,           │
+│ benchmark, browse, canary, careful, +35 more. Each adds ~80 tokens    │
+│ of metadata to every session.                                        │
+│ Savings: ~3.2K tokens (~$0.0014)                                      │
+│ Archive unused skills:                                                 │
+│   mv ~/.claude/skills/autoplan ~/.claude/skills/.archived/            │
+│   mv ~/.claude/skills/benchmark ~/.claude/skills/.archived/           │
+│   mv ~/.claude/skills/browse ~/.claude/skills/.archived/              │
+│   mv ~/.claude/skills/canary ~/.claude/skills/.archived/              │
+│   mv ~/.claude/skills/careful ~/.claude/skills/.archived/             │
+│   mv ~/.claude/skills/checkpoint ~/.claude/skills/.archived/          │
+│   mv ~/.claude/skills/codex ~/.claude/skills/.archived/               │
+│   mv ~/.claude/skills/connect-chrome ~/.claude/skills/.archived/      │
+│   mv ~/.claude/skills/cso ~/.claude/skills/.archived/                 │
+│   mv ~/.claude/skills/design-consultation ~/.claude/skills/.archived/ │
+└───────────────────────────────────────────────────────────────────────┘
+```
+
+</details>
+
 
 *Historical screenshot from before 2.0.0; local placeholder retained until a refreshed Auggie-only CLI screenshot is captured.*
 
